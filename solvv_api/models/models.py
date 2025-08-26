@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, TIMESTAMP
 from sqlalchemy.sql import func
-from database import Base
+from solvv_api.core.database import Base
+
 
 class Client(Base):
     __tablename__ = "clients"

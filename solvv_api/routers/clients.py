@@ -1,9 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from database import SessionLocal
-from models.models import Client as ClientModel
-from schemas import Client, ClientCreate
+
+from solvv_api.core.database import SessionLocal
+from solvv_api.schemas import Client, ClientCreate
+from solvv_api.models.models import Client as ClientModel
+from solvv_api.exceptions.custom_exceptions import (
+    ClientNotFoundException,
+    ClientAlreadyExistsException,
+    InvalidClientTypeException
+)
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
 
@@ -17,18 +23,29 @@ def get_db():
 # Create Client
 @router.post("/", response_model=Client)
 def create_client(client: ClientCreate, db: Session = Depends(get_db)):
-    db_client = ClientModel(
-        name=client.name,
-        email=client.email,
-        client_type=client.client_type,
-        gst_number=client.gst_number,
-        description=client.description
-    )
-    db.add(db_client)
-    db.commit()
-    db.refresh(db_client)
-    return {"message": f"Client {db_client.id} created successfully"}
-
+    # Validate phone number if provided
+    if client.phone:
+        if not re.match(INDIAN_PHONE_REGEX, client.phone):
+            raise HTTPException(
+                status_code=422,
+                detail="Phone number must be a valid Indian number in +91XXXXXXXXXX format."
+            )
+    try:
+        db_client = ClientModel(
+            name=client.name,
+            email=client.email,
+            phone=client.phone,
+            client_type=client.client_type,
+            gst_number=client.gst_number,
+            description=client.description
+        )
+        db.add(db_client)
+        db.commit()
+        db.refresh(db_client)
+        return {"message": f"Client {db_client.id} created successfully"}
+    except ValidationError as e:
+        errors = [f"{err['loc'][-1]}: {err['msg']}" for err in e.errors()]
+        raise HTTPException(status_code=422, detail=errors)
 
 # Get All Clients
 @router.get("/", response_model=List[Client])

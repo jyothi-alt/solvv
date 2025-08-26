@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from database import SessionLocal
+from solvv_api.core.database import SessionLocal
 from models.models import Course as CourseModel
-from schemas import Course, CourseCreate
+from solvv_api.schemas import Client, ClientCreate
+
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
 
