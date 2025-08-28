@@ -1,88 +1,97 @@
+# solvv_api/routers/clients.py
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 
-from solvv_api.core.database import SessionLocal
-from solvv_api.schemas import Client, ClientCreate
-from solvv_api.models.models import Client as ClientModel
+from solvv_api.core.database import get_db
+from solvv_api.models.client import ClientModel  # SQLAlchemy model
+from solvv_api.schemas.client import ClientCreate, ClientResponse
+
 from solvv_api.exceptions.custom_exceptions import (
     ClientNotFoundException,
     ClientAlreadyExistsException,
     InvalidClientTypeException
 )
+from solvv_api.exceptions.handlers import (
+    client_not_found_handler,
+    client_already_exists_handler,
+    invalid_client_type_handler
+)
 
-router = APIRouter(prefix="/clients", tags=["Clients"])
+router = APIRouter(
+    prefix="/clients",
+    tags=["Clients"]
+)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# Create Client
-@router.post("/", response_model=Client)
-def create_client(client: ClientCreate, db: Session = Depends(get_db)):
-    # Validate phone number if provided
-    if client.phone:
-        if not re.match(INDIAN_PHONE_REGEX, client.phone):
-            raise HTTPException(
-                status_code=422,
-                detail="Phone number must be a valid Indian number in +91XXXXXXXXXX format."
-            )
-    try:
-        db_client = ClientModel(
-            name=client.name,
-            email=client.email,
-            phone=client.phone,
-            client_type=client.client_type,
-            gst_number=client.gst_number,
-            description=client.description
-        )
-        db.add(db_client)
-        db.commit()
-        db.refresh(db_client)
-        return {"message": f"Client {db_client.id} created successfully"}
-    except ValidationError as e:
-        errors = [f"{err['loc'][-1]}: {err['msg']}" for err in e.errors()]
-        raise HTTPException(status_code=422, detail=errors)
-
-# Get All Clients
-@router.get("/", response_model=List[Client])
+# ---------------- GET ALL CLIENTS ----------------
+@router.get("/", response_model=List[ClientResponse])
 def get_clients(db: Session = Depends(get_db)):
-    return db.query(ClientModel).all()
+    clients = db.query(ClientModel).all()
+    return clients
 
-# Get Client by ID
-@router.get("/{client_id}", response_model=Client)
+# ---------------- GET SINGLE CLIENT ----------------
+@router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: int, db: Session = Depends(get_db)):
     client = db.query(ClientModel).filter(ClientModel.id == client_id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise ClientNotFoundException(f"Client with ID {client_id} not found")
     return client
 
-# Update Client
-@router.put("/{client_id}", response_model=Client)
-def update_client(client_id: int, updated_client: ClientCreate, db: Session = Depends(get_db)):
+# ---------------- CREATE CLIENT ----------------
+@router.post("/", response_model=ClientResponse)
+def create_client(client: ClientCreate, db: Session = Depends(get_db)):
+    # Check if client with same email already exists
+    existing = db.query(ClientModel).filter(ClientModel.email == client.email).first()
+    if existing:
+        raise ClientAlreadyExistsException(f"Client with email {client.email} already exists")
+
+    # Validate client_type
+    valid_types = ["retail", "corporate"]
+    if client.client_type not in valid_types:
+        raise InvalidClientTypeException(f"Client type must be one of {valid_types}")
+
+    new_client = ClientModel(
+        name=client.name,
+        email=client.email,
+        client_type=client.client_type,
+        gst_number=getattr(client, "gst_number", None),
+        description=getattr(client, "description", None),
+        created_at=datetime.utcnow()
+    )
+    db.add(new_client)
+    db.commit()
+    db.refresh(new_client)
+    return new_client
+
+# ---------------- UPDATE CLIENT ----------------
+@router.put("/{client_id}", response_model=ClientResponse)
+def update_client(client_id: int, updated: ClientCreate, db: Session = Depends(get_db)):
     client = db.query(ClientModel).filter(ClientModel.id == client_id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-    
-    client.name = updated_client.name
-    client.email = updated_client.email
-    client.client_type = updated_client.client_type
-    client.gst_number = updated_client.gst_number
-    client.description = updated_client.description
+        raise ClientNotFoundException(f"Client with ID {client_id} not found")
+
+    # Validate client_type
+    valid_types = ["retail", "corporate"]
+    if updated.client_type not in valid_types:
+        raise InvalidClientTypeException(f"Client type must be one of {valid_types}")
+
+    # Update fields safely
+    for key, value in updated.model_dump().items():  # Pydantic v2
+        setattr(client, key, value)
 
     db.commit()
     db.refresh(client)
     return client
 
-# Delete Client
+# ---------------- DELETE CLIENT ----------------
 @router.delete("/{client_id}")
 def delete_client(client_id: int, db: Session = Depends(get_db)):
     client = db.query(ClientModel).filter(ClientModel.id == client_id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise ClientNotFoundException(f"Client with ID {client_id} not found")
+    
     db.delete(client)
     db.commit()
     return {"message": f"Client {client_id} deleted successfully"}
