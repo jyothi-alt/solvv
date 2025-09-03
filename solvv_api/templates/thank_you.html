@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+  <body style="font-family:Arial, sans-serif;">
+    <div style="max-width:600px;margin:0 auto;">
+      <div style="display:flex;align-items:center;margin-bottom:16px;">
+        <img src="{{ logo_url }}" alt="Evolvv Logo" style="height:36px; margin-right:8px;" />
+      </div>
+
+      <h2>Hi {{ participant_name }},</h2>
+      <p>Congratulations on completing <strong>{{ course_name }}</strong>! 🎉</p>
+
+      <h3>Additional Study Resources</h3>
+      {% if resources|length > 0 %}
+        <ul>
+          {% for r in resources %}
+            <li><a href="{{ r.url }}">{{ r.title }}</a></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>We are curating more resources for you. Stay tuned!</p>
+      {% endif %}
+
+      <h3>You May Also Like</h3>
+      <ul>
+        {% for c in recommendations %}
+          <li><a href="{{ c.url }}">{{ c.name }}</a></li>
+        {% endfor %}
+      </ul>
+
+      <p style="margin-top:24px;">
+        <a href="{{ explore_more_url }}" style="padding:10px 16px;background:#4F46E5;color:#fff;text-decoration:none;border-radius:6px;">Explore more courses</a>
+      </p>
+
+      <p style="margin-top:24px;">Best,<br/>Team Evolvv</p>
+    </div>
+  </body>
+</html>

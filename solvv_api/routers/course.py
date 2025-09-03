@@ -43,7 +43,7 @@ def update_course(course_id: int, updated_course: CourseCreate, db: Session = De
         setattr(course, key, value)
     db.commit()
     db.refresh(course)
-    return course
+    return course 
 
 @router.delete("/{course_id}")
 def delete_course(course_id: int, db: Session = Depends(get_db)):
@@ -52,4 +52,5 @@ def delete_course(course_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Course not found")
     db.delete(course)
     db.commit()
-    return {"message": f"Course {course_id} deleted successfully"}
+    return {"message": f"Course {course_id} deleted successfully"}   
+
