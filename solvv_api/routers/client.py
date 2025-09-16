@@ -1,97 +1,51 @@
-# solvv_api/routers/clients.py
-
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from datetime import datetime
-from typing import List, Optional
+from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from solvv_api.core.database import get_db
-from solvv_api.models.client import ClientModel  # SQLAlchemy model
-from solvv_api.schemas.client import ClientCreate, ClientResponse
+from solvv_api.schemas.client import ClientCreate, ClientUpdate, ClientOut
+from solvv_api.services import clients_service
 
-from solvv_api.exceptions.custom_exceptions import (
-    ClientNotFoundException,
-    ClientAlreadyExistsException,
-    InvalidClientTypeException
-)
-from solvv_api.exceptions.handlers import (
-    client_not_found_handler,
-    client_already_exists_handler,
-    invalid_client_type_handler
-)
+router = APIRouter(prefix="/solvv/admin", tags=["Clients"])
 
-router = APIRouter(
-    prefix="/clients",
-    tags=["Clients"]
-)
+@router.get("/clients", response_model=List[ClientOut])
+async def list_clients(skip: int = 0, limit: int = 10, db: AsyncSession = Depends(get_db)):
+    return await clients_service.get_clients(db, skip=skip, limit=limit)
 
-# ---------------- GET ALL CLIENTS ----------------
-@router.get("/", response_model=List[ClientResponse])
-def get_clients(db: Session = Depends(get_db)):
-    clients = db.query(ClientModel).all()
-    return clients
 
-# ---------------- GET SINGLE CLIENT ----------------
-@router.get("/{client_id}", response_model=ClientResponse)
-def get_client(client_id: int, db: Session = Depends(get_db)):
-    client = db.query(ClientModel).filter(ClientModel.id == client_id).first()
-    if not client:
-        raise ClientNotFoundException(f"Client with ID {client_id} not found")
-    return client
+@router.get("/client/{client_id}", response_model=ClientOut)
+async def get_client(client_id: int, db: AsyncSession = Depends(get_db)):
+    try:
+        client = await clients_service.get_client_by_id(db, client_id)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        return client
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
-# ---------------- CREATE CLIENT ----------------
-@router.post("/", response_model=ClientResponse)
-def create_client(client: ClientCreate, db: Session = Depends(get_db)):
-    # Check if client with same email already exists
-    existing = db.query(ClientModel).filter(ClientModel.email == client.email).first()
-    if existing:
-        raise ClientAlreadyExistsException(f"Client with email {client.email} already exists")
+@router.post("/client", response_model=ClientOut)
+async def create_client(client: ClientCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        return await clients_service.create_client(db, client)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
-    # Validate client_type
-    valid_types = ["retail", "corporate"]
-    if client.client_type not in valid_types:
-        raise InvalidClientTypeException(f"Client type must be one of {valid_types}")
+@router.put("/client/{client_id}", response_model=ClientOut)
+async def update_client(client_id: int, client: ClientUpdate, db: AsyncSession = Depends(get_db)):
+    try:
+        updated = await clients_service.update_client(db, client_id, client)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Client not found")
+        return updated
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
-    new_client = ClientModel(
-        name=client.name,
-        email=client.email,
-        client_type=client.client_type,
-        gst_number=getattr(client, "gst_number", None),
-        description=getattr(client, "description", None),
-        created_at=datetime.utcnow()
-    )
-    db.add(new_client)
-    db.commit()
-    db.refresh(new_client)
-    return new_client
-
-# ---------------- UPDATE CLIENT ----------------
-@router.put("/{client_id}", response_model=ClientResponse)
-def update_client(client_id: int, updated: ClientCreate, db: Session = Depends(get_db)):
-    client = db.query(ClientModel).filter(ClientModel.id == client_id).first()
-    if not client:
-        raise ClientNotFoundException(f"Client with ID {client_id} not found")
-
-    # Validate client_type
-    valid_types = ["retail", "corporate"]
-    if updated.client_type not in valid_types:
-        raise InvalidClientTypeException(f"Client type must be one of {valid_types}")
-
-    # Update fields safely
-    for key, value in updated.model_dump().items():  # Pydantic v2
-        setattr(client, key, value)
-
-    db.commit()
-    db.refresh(client)
-    return client
-
-# ---------------- DELETE CLIENT ----------------
-@router.delete("/{client_id}")
-def delete_client(client_id: int, db: Session = Depends(get_db)):
-    client = db.query(ClientModel).filter(ClientModel.id == client_id).first()
-    if not client:
-        raise ClientNotFoundException(f"Client with ID {client_id} not found")
-    
-    db.delete(client)
-    db.commit()
-    return {"message": f"Client {client_id} deleted successfully"}
+@router.delete("/client/{client_id}")
+async def delete_client(client_id: int, db: AsyncSession = Depends(get_db)):
+    try:
+        deleted = await clients_service.delete_client(db, client_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Client not found")
+        return {"detail": "Client deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
